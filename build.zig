@@ -15,12 +15,20 @@ pub fn build(b: *std.Build) void {
     // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
 
+    // cmark build step
+    const cmark = b.addSystemCommand(&.{ "make", "-C", "deps/cmark" });
+
     const exe = b.addExecutable(.{
         .name = "zero",
         .root_source_file = .{ .path = "src/main.zig" },
         .target = target,
         .optimize = optimize,
     });
+
+    // add the cmark build step as a dependency if cmark isn't built
+    std.fs.cwd().access("deps/cmark/build/src/libcmark.a", .{}) catch {
+        exe.step.dependOn(&cmark.step);
+    };
 
     exe.linkLibC();
     exe.addIncludePath(.{ .path = "deps/cmark/src" });
