@@ -10,4 +10,5 @@ not.
 
 ## TODO
 - [x] Markdown rendering
-- [ ] Populate TODO with actually important things
+- [ ] Templating
+- [ ] Incremental builds
