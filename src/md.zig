@@ -1,20 +1,14 @@
 const std = @import("std");
 const c = @cImport({
-    @cInclude("cmark.h");
-    @cInclude("stdlib.h");
+    @cInclude("md4c-html.h");
 });
 
+fn process_output(text: [*c]const c.MD_CHAR, size: c_uint, userdata: ?*anyopaque) callconv(.C) void {
+    const out: *std.fs.File.Writer = @ptrCast(@alignCast(userdata orelse @panic("error: md4c hasn't populated userdata")));
+    _ = out.write(text[0..size]) catch @panic("error: couldn't write to file");
+}
+
 pub fn parse(out: anytype, src: []const u8) !void {
-    const parser = c.cmark_parser_new(c.CMARK_OPT_DEFAULT);
-    defer c.cmark_parser_free(parser);
-
-    c.cmark_parser_feed(parser, @ptrCast(src), src.len);
-
-    const doc = c.cmark_parser_finish(parser);
-    defer c.cmark_node_free(doc);
-
-    const html = c.cmark_render_html(doc, c.CMARK_OPT_DEFAULT);
-    defer c.free(html);
-
-    try out.print("{s}", .{html});
+    const ret = c.md_html(src.ptr, @intCast(src.len), process_output, @ptrCast(@constCast(&out)), 0, c.MD_HTML_FLAG_DEBUG);
+    if (ret != 0) return error.MarkdownParseError;
 }
