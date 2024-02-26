@@ -8,7 +8,10 @@ pub fn main() !void {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    var src_dir = try std.fs.cwd().openDir(SRC_DIR, .{ .iterate = true });
+    var src_dir = std.fs.cwd().openDir(SRC_DIR, .{ .iterate = true }) catch {
+        std.debug.print("error: couldn't open {s}/\n", .{SRC_DIR});
+        return;
+    };
     defer src_dir.close();
 
     var src_walker = try src_dir.walk(alloc);
