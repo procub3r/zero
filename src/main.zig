@@ -50,7 +50,7 @@ pub fn main() !void {
 
         // render the markdown from the source into a html post, write it to the post file
         std.debug.print("rendering {s}/{s} -> {s}\n", .{ SRC_DIR, f.path, post_name });
-        try post.render(post_file_buffered.writer(), src);
+        try post.render(alloc, post_file_buffered.writer(), src);
         try post_file_buffered.flush();
     }
 }
