@@ -37,7 +37,13 @@ pub fn main() !void {
         // open the source file and read its contents
         const src_file = try src_dir.openFile(f.path, .{ .mode = .read_only });
         defer src_file.close();
-        const src = try src_file.readToEndAlloc(alloc, 1024 * 1024);
+        const src = src_file.readToEndAlloc(alloc, 1024 * 1024) catch |err| {
+            switch (err) {
+                error.FileTooBig => std.debug.print("error: file {s} is too big\n", .{f.path}),
+                else => {},
+            }
+            continue;
+        };
 
         // create a buffered writer to write to the post file
         var post_file_buffered = std.io.bufferedWriter(post_file.writer());
