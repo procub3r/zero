@@ -50,7 +50,15 @@ pub fn main() !void {
 
         // render the markdown from the source into a html post, write it to the post file
         std.debug.print("rendering {s}/{s} -> {s}\n", .{ SRC_DIR, f.path, post_name });
-        try post.render(alloc, post_file_buffered.writer(), src);
+        post.render(alloc, post_file_buffered.writer(), src) catch |err| {
+            switch (err) {
+                error.IncorrectFormat => {
+                    std.debug.print("error: incorrect format\n", .{});
+                    continue;
+                },
+                else => return err,
+            }
+        };
         try post_file_buffered.flush();
     }
 }

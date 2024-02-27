@@ -10,5 +10,6 @@ not.
 
 ## TODO
 - [x] Markdown rendering
+- [x] Frontmatter parsing
 - [ ] Templating
 - [ ] Incremental builds
