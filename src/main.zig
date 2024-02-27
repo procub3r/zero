@@ -39,8 +39,12 @@ pub fn main() !void {
         defer src_file.close();
         const src = try src_file.readToEndAlloc(alloc, 1024 * 1024);
 
+        // create a buffered writer to write to the post file
+        var post_file_buffered = std.io.bufferedWriter(post_file.writer());
+
         // render the markdown from the source into a html post, write it to the post file
         std.debug.print("rendering {s}/{s} -> {s}\n", .{ SRC_DIR, f.path, post_name });
-        try post.render(post_file.writer(), src);
+        try post.render(post_file_buffered.writer(), src);
+        try post_file_buffered.flush();
     }
 }
