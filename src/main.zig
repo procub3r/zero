@@ -1,8 +1,8 @@
 const std = @import("std");
 const post = @import("post.zig");
 
-// all .md files reside here
-const SRC_DIR = "src";
+// markdown source of the site
+const SOURCE_DIR = "src/";
 
 pub fn main() !void {
     // create an arena allocator. all memory will be freed at the end of the program
@@ -10,55 +10,29 @@ pub fn main() !void {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    // open the src dir for iterating
-    var src_dir = std.fs.cwd().openDir(SRC_DIR, .{ .iterate = true }) catch {
-        std.debug.print("error: couldn't open {s}/\n", .{SRC_DIR});
+    // open the source directory for walking through all the source files
+    var source_dir = std.fs.cwd().openDir(SOURCE_DIR, .{ .iterate = true }) catch {
+        std.log.err("couldn't open {s} for iterating", .{SOURCE_DIR});
         return;
     };
-    defer src_dir.close();
+    defer source_dir.close();
 
-    // iterate ("walk") through the src dir
-    var src_walker = try src_dir.walk(alloc);
-    defer src_walker.deinit();
-    while (try src_walker.next()) |f| {
-        // only work with files that have a .md extension
-        if (f.kind != .file) continue;
-        if (!std.mem.endsWith(u8, f.path, ".md")) continue;
+    // walk through the source files
+    var source_walker = try source_dir.walk(alloc);
+    defer source_walker.deinit();
+    while (try source_walker.next()) |f| {
+        // only work with markdown files
+        if (f.kind != .file or !std.mem.endsWith(u8, f.path, ".md")) continue;
+        const source_path = f.path;
 
-        // replace .md with .html to obtain the name of the post
-        const post_name = try std.mem.concat(alloc, u8, &.{ f.path[0 .. f.path.len - 2], "html" });
-        // open the post file for writing. create it if it doesn't already exist
-        const post_file = std.fs.cwd().createFile(post_name, .{}) catch {
-            std.debug.print("error: couldn't open {s} for writing\n", .{post_name});
-            continue;
+        // the post file path has a .html extension and is relative to the site root whereas
+        // the source file path has a .md extension and is relative to SOURCE_DIR.
+        const post_path = try std.mem.concat(alloc, u8, &.{ source_path[0 .. source_path.len - 2], "html" });
+
+        // render a post file from the source file
+        std.log.info("rendering post {s}", .{post_path});
+        post.render(alloc, post_path, source_dir, source_path) catch {
+            std.log.err("couldn't render post", .{});
         };
-        defer post_file.close();
-
-        // open the source file and read its contents
-        const src_file = try src_dir.openFile(f.path, .{ .mode = .read_only });
-        defer src_file.close();
-        const src = src_file.readToEndAlloc(alloc, 1024 * 1024) catch |err| {
-            switch (err) {
-                error.FileTooBig => std.debug.print("error: file {s} is too big\n", .{f.path}),
-                else => {},
-            }
-            continue;
-        };
-
-        // create a buffered writer to write to the post file
-        var post_file_buffered = std.io.bufferedWriter(post_file.writer());
-
-        // render the markdown from the source into a html post, write it to the post file
-        std.debug.print("rendering {s}/{s} -> {s}\n", .{ SRC_DIR, f.path, post_name });
-        post.render(alloc, post_file_buffered.writer(), src) catch |err| {
-            switch (err) {
-                error.IncorrectFormat => {
-                    std.debug.print("error: incorrect format\n", .{});
-                    continue;
-                },
-                else => return err,
-            }
-        };
-        try post_file_buffered.flush();
     }
 }
