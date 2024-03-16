@@ -17,6 +17,10 @@ pub fn main() !void {
     };
     defer source_dir.close();
 
+    // all layouts are stored in this hashmap. (layout_name: layout_content)
+    var layouts = std.StringHashMap([]const u8).init(alloc);
+    defer layouts.deinit();
+
     // walk through the source files
     var source_walker = try source_dir.walk(alloc);
     defer source_walker.deinit();
@@ -31,7 +35,7 @@ pub fn main() !void {
 
         // render a post file from the source file
         std.log.info("rendering post {s}", .{post_path});
-        post.render(alloc, post_path, source_dir, source_path) catch {
+        post.render(alloc, post_path, &layouts, source_dir, source_path) catch {
             std.log.err("couldn't render post", .{});
         };
     }

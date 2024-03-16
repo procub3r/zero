@@ -1,7 +1,9 @@
 const std = @import("std");
 const md = @import("md.zig");
 
-pub fn render(alloc: std.mem.Allocator, post_path: []const u8, source_dir: std.fs.Dir, source_path: []const u8) !void {
+const LAYOUT_DIR = "layouts/";
+
+pub fn render(alloc: std.mem.Allocator, post_path: []const u8, layouts: *std.StringHashMap([]const u8), source_dir: std.fs.Dir, source_path: []const u8) !void {
     // open the post file for writing
     const post_file = std.fs.cwd().createFile(post_path, .{}) catch |err| {
         std.log.err("couldn't open file {s} for writing", .{post_path});
@@ -13,7 +15,7 @@ pub fn render(alloc: std.mem.Allocator, post_path: []const u8, source_dir: std.f
     var post_writer_buffered = std.io.bufferedWriter(post_file.writer());
 
     // open the source file and read its contents
-    const source = try readSource(alloc, source_dir, source_path);
+    const source = try readFile(alloc, source_dir, source_path);
 
     // parse metadata from the frontmatter
     const frontmatter_end = try getFrontmatterEnd(source);
@@ -21,15 +23,58 @@ pub fn render(alloc: std.mem.Allocator, post_path: []const u8, source_dir: std.f
     var metadata = try parseMetadata(alloc, frontmatter);
     defer metadata.deinit();
 
-    // print metadata for debug purposes
-    var metadata_iter = metadata.iterator();
-    while (metadata_iter.next()) |entry| {
-        std.debug.print("{s}:\t{s}\n", .{ entry.key_ptr.*, entry.value_ptr.* });
+    // get the name of the layout from the metadata
+    const layout_name = metadata.get("layout") orelse blk: {
+        std.log.warn("layout field not set. defaulting to base", .{});
+        break :blk "base";
+    };
+    std.log.info("using layout {s}", .{layout_name});
+
+    // load layout and write it to the post file, replacing all variables
+    var layout = try loadLayout(alloc, layouts, layout_name);
+    while (std.mem.indexOf(u8, layout, "<!--{")) |var_start| {
+        // write everything up till the start of the variable
+        _ = try post_writer_buffered.write(layout[0..var_start]);
+
+        // determine where the variable name ends
+        const var_end = std.mem.indexOf(u8, layout, "}-->") orelse {
+            // if there's no close tag, write what's left of the layout and break
+            std.log.warn("no matching }}--> found for <!--{{", .{});
+            _ = try post_writer_buffered.write(layout[var_start..]);
+            break;
+        };
+
+        const var_name = layout[var_start + 5 .. var_end];
+        if (std.mem.eql(u8, var_name, "content")) {
+            // if the name of the variable is "content", render the md source
+            const source_md = source[frontmatter_end + 6 ..];
+            try md.parse(post_writer_buffered.writer(), source_md);
+        } else {
+            // else, obtain the value of the variable from the metadata and write it
+            const var_value = metadata.get(var_name) orelse "";
+            _ = try post_writer_buffered.write(var_value);
+        }
+
+        // slide the layout slice past the current variable
+        layout = layout[var_end + 4 ..];
+    } else {
+        // write what's left of the layout
+        _ = try post_writer_buffered.write(layout);
     }
 
-    const source_md = source[frontmatter_end + 6 ..];
-    try md.parse(post_writer_buffered.writer(), source_md);
     try post_writer_buffered.flush();
+}
+
+fn loadLayout(alloc: std.mem.Allocator, layouts: *std.StringHashMap([]const u8), layout_name: []const u8) ![]const u8 {
+    const layout = layouts.get(layout_name) orelse blk: {
+        // if the layout isn't in the hashmap yet, read it from the layout file
+        const layout_filename = try std.mem.concat(alloc, u8, &.{ LAYOUT_DIR, layout_name, ".html" });
+        const layout = try readFile(alloc, std.fs.cwd(), layout_filename);
+        try layouts.put(layout_name, layout);
+        std.log.info("loaded layout {s}", .{layout_filename});
+        break :blk layout;
+    };
+    return layout;
 }
 
 // simple key: value pair parser
@@ -61,18 +106,18 @@ fn getFrontmatterEnd(source: []const u8) !usize {
     return end;
 }
 
-fn readSource(alloc: std.mem.Allocator, source_dir: std.fs.Dir, source_path: []const u8) ![]const u8 {
-    const source_file = source_dir.openFile(source_path, .{ .mode = .read_only }) catch |err| {
-        std.log.err("couldn't open file SOURCE_DIR/{s} for reading", .{source_path});
+fn readFile(alloc: std.mem.Allocator, dir: std.fs.Dir, path: []const u8) ![]const u8 {
+    const file = dir.openFile(path, .{ .mode = .read_only }) catch |err| {
+        std.log.err("couldn't open file {s} for reading", .{path});
         return err;
     };
-    defer source_file.close();
+    defer file.close();
 
     // cap the file size at 1MiB
-    const source = source_file.readToEndAlloc(alloc, 1024 * 1024) catch |err| {
-        std.log.err("[{}] {s}", .{ err, source_path });
+    const content = file.readToEndAlloc(alloc, 1024 * 1024) catch |err| {
+        std.log.err("[{}] {s}", .{ err, path });
         return err;
     };
 
-    return source;
+    return content;
 }
