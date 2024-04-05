@@ -2,8 +2,15 @@ const std = @import("std");
 const md = @import("md.zig");
 
 const LAYOUT_DIR = "layouts/";
+const DEFAULT_LAYOUT = "post";
 
-pub fn render(alloc: std.mem.Allocator, post_path: []const u8, layouts: *std.StringHashMap([]const u8), source_dir: std.fs.Dir, source_path: []const u8) !void {
+pub fn renderFromSourceFile(
+    alloc: std.mem.Allocator,
+    post_path: []const u8,
+    layouts: *std.StringHashMap([]const u8),
+    source_dir: std.fs.Dir,
+    source_path: []const u8,
+) !void {
     // open the post file for writing
     const post_file = std.fs.cwd().createFile(post_path, .{}) catch |err| {
         std.log.err("couldn't open file {s} for writing", .{post_path});
@@ -17,6 +24,17 @@ pub fn render(alloc: std.mem.Allocator, post_path: []const u8, layouts: *std.Str
     // open the source file and read its contents
     const source = try readFile(alloc, source_dir, source_path);
 
+    // render the post
+    try render(alloc, &post_writer_buffered, layouts, source);
+    try post_writer_buffered.flush();
+}
+
+pub fn render(
+    alloc: std.mem.Allocator,
+    post_writer: anytype,
+    layouts: *std.StringHashMap([]const u8),
+    source: []const u8,
+) !void {
     // parse metadata from the frontmatter
     const frontmatter_end = try getFrontmatterEnd(source);
     const frontmatter = source[4..frontmatter_end];
@@ -25,8 +43,8 @@ pub fn render(alloc: std.mem.Allocator, post_path: []const u8, layouts: *std.Str
 
     // get the name of the layout from the metadata
     const layout_name = metadata.get("layout") orelse blk: {
-        std.log.warn("layout field not set. defaulting to base", .{});
-        break :blk "base";
+        std.log.warn("layout field not set. defaulting to {s}", .{DEFAULT_LAYOUT});
+        break :blk DEFAULT_LAYOUT;
     };
     std.log.info("using layout {s}", .{layout_name});
 
@@ -34,13 +52,13 @@ pub fn render(alloc: std.mem.Allocator, post_path: []const u8, layouts: *std.Str
     var layout = try loadLayout(alloc, layouts, layout_name);
     while (std.mem.indexOf(u8, layout, "<!--{")) |var_start| {
         // write everything up till the start of the variable
-        _ = try post_writer_buffered.write(layout[0..var_start]);
+        _ = try post_writer.write(layout[0..var_start]);
 
         // determine where the variable name ends
         const var_end = std.mem.indexOf(u8, layout, "}-->") orelse {
             // if there's no close tag, write what's left of the layout and break
             std.log.warn("no matching }}--> found for <!--{{", .{});
-            _ = try post_writer_buffered.write(layout[var_start..]);
+            _ = try post_writer.write(layout[var_start..]);
             break;
         };
 
@@ -48,21 +66,19 @@ pub fn render(alloc: std.mem.Allocator, post_path: []const u8, layouts: *std.Str
         if (std.mem.eql(u8, var_name, "content")) {
             // if the name of the variable is "content", render the md source
             const source_md = source[frontmatter_end + 6 ..];
-            try md.parse(post_writer_buffered.writer(), source_md);
+            try md.parse(post_writer.writer(), source_md);
         } else {
             // else, obtain the value of the variable from the metadata and write it
             const var_value = metadata.get(var_name) orelse "";
-            _ = try post_writer_buffered.write(var_value);
+            _ = try post_writer.write(var_value);
         }
 
         // slide the layout slice past the current variable
         layout = layout[var_end + 4 ..];
     } else {
         // write what's left of the layout
-        _ = try post_writer_buffered.write(layout);
+        _ = try post_writer.write(layout);
     }
-
-    try post_writer_buffered.flush();
 }
 
 fn loadLayout(alloc: std.mem.Allocator, layouts: *std.StringHashMap([]const u8), layout_name: []const u8) ![]const u8 {

@@ -2,7 +2,7 @@ const std = @import("std");
 const post = @import("post.zig");
 
 // markdown source of the site
-const SOURCE_DIR = "src/";
+const SOURCE_DIR = "source/";
 
 pub fn main() !void {
     // create an arena allocator. all memory will be freed at the end of the program
@@ -35,7 +35,7 @@ pub fn main() !void {
 
         // render a post file from the source file
         std.log.info("rendering post {s}", .{post_path});
-        post.render(alloc, post_path, &layouts, source_dir, source_path) catch {
+        post.renderFromSourceFile(alloc, post_path, &layouts, source_dir, source_path) catch {
             std.log.err("couldn't render post", .{});
         };
     }

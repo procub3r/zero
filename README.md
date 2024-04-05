@@ -6,7 +6,7 @@ Zero is a static site generator written in Zig. It will be used to generate my p
     ```
     site_root
     ├── layouts
-    │  ├── base.html
+    │  ├── post.html
     │  └── ...
     └── src
        ├── index.md
@@ -19,7 +19,7 @@ Zero is a static site generator written in Zig. It will be used to generate my p
     ---
     title: Title Of The Post
     desc: Description Of The Post
-    layout: base
+    layout: post
     any arbitrary key: any arbitrary value
     you can have: how many ever you wish
     ---
