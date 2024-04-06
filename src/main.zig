@@ -1,5 +1,6 @@
 const std = @import("std");
 const post = @import("post.zig");
+const layouts = @import("layouts.zig");
 
 // markdown source of the site
 const SOURCE_DIR = "source/";
@@ -10,16 +11,16 @@ pub fn main() !void {
     defer arena.deinit();
     const alloc = arena.allocator();
 
+    // initialize the layout map
+    layouts.init(alloc);
+    defer layouts.deinit();
+
     // open the source directory for walking through all the source files
     var source_dir = std.fs.cwd().openDir(SOURCE_DIR, .{ .iterate = true }) catch {
         std.log.err("couldn't open {s} for iterating", .{SOURCE_DIR});
         return;
     };
     defer source_dir.close();
-
-    // all layouts are stored in this hashmap. (layout_name: layout_content)
-    var layouts = std.StringHashMap([]const u8).init(alloc);
-    defer layouts.deinit();
 
     // walk through the source files
     var source_walker = try source_dir.walk(alloc);
@@ -36,7 +37,7 @@ pub fn main() !void {
 
         // render a post file from the source file
         std.log.info("rendering post {s}", .{post_path});
-        post.renderFromSourceFile(alloc, post_path, &layouts, source_dir, source_path) catch {
+        post.renderFromSourceFile(alloc, post_path, source_dir, source_path) catch {
             std.log.err("couldn't render post", .{});
         };
     }
