@@ -23,6 +23,7 @@ pub fn renderFromSourceFile(
 
     // open the source file and read its contents
     const source = try readFile(alloc, source_dir, source_path);
+    defer alloc.free(source);
 
     // render the post
     try render(alloc, &post_writer_buffered, layouts, source);
@@ -85,6 +86,7 @@ fn loadLayout(alloc: std.mem.Allocator, layouts: *std.StringHashMap([]const u8),
     const layout = layouts.get(layout_name) orelse blk: {
         // if the layout isn't in the hashmap yet, read it from the layout file
         const layout_filename = try std.mem.concat(alloc, u8, &.{ LAYOUT_DIR, layout_name, ".html" });
+        defer alloc.free(layout_filename);
         const layout = try readFile(alloc, std.fs.cwd(), layout_filename);
         try layouts.put(layout_name, layout);
         std.log.info("loaded layout {s}", .{layout_filename});
