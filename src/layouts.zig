@@ -1,5 +1,6 @@
 const std = @import("std");
 const md = @import("md.zig");
+const tags = @import("tags.zig");
 const common = @import("common.zig");
 
 const LAYOUT_DIR = "layouts/";
@@ -39,13 +40,16 @@ pub fn renderLayout(
             break;
         };
 
+        // variable name and its value
         const var_name = layout[var_start + 5 .. var_end];
+        const var_value = metadata.get(var_name) orelse "";
         if (std.mem.eql(u8, var_name, "content")) {
             // if the name of the variable is "content", render the md source
             try md.parse(out.writer(), source_md);
+        } else if (std.mem.eql(u8, var_name, "tags")) {
+            try tags.renderTagsInPost(out.writer(), var_value);
         } else {
-            // else, obtain the value of the variable from the metadata and write it
-            const var_value = metadata.get(var_name) orelse "";
+            // else, write the variable value as it is
             _ = try out.write(var_value);
         }
 
