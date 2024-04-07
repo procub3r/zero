@@ -21,7 +21,8 @@ pub fn renderFromSourceFile(
 
     // open the source file and read its contents
     const source = try common.readFile(alloc, source_dir, source_path);
-    defer alloc.free(source);
+    // don't free source as parts of it will be used to render
+    // a post description in the tags page.
 
     // render the post
     try render(alloc, &post_writer_buffered, source);

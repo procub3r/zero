@@ -65,7 +65,9 @@ fn load(alloc: std.mem.Allocator, layout_name: []const u8) ![]const u8 {
     const layout = layout_map.get(layout_name) orelse blk: {
         // if the layout isn't in the hashmap yet, read it from the layout file
         const layout_filename = try std.mem.concat(alloc, u8, &.{ LAYOUT_DIR, layout_name, ".html" });
-        defer alloc.free(layout_filename);
+        // really wouldn't matter much if we didn't free layout_filename.
+        // we're using an arena allocator anyways.
+
         const layout = try common.readFile(alloc, std.fs.cwd(), layout_filename);
         try layout_map.put(layout_name, layout);
         std.log.info("loaded layout {s}", .{layout_filename});

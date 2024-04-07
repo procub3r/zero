@@ -33,7 +33,7 @@ pub fn main() !void {
         // the post file path has a .html extension and is relative to the site root whereas
         // the source file path has a .md extension and is relative to SOURCE_DIR.
         const post_path = try std.mem.concat(alloc, u8, &.{ source_path[0 .. source_path.len - 2], "html" });
-        defer alloc.free(post_path);
+        // don't free post_path as it will be used at the end to render a link to the post in the tags page
 
         // render a post file from the source file
         std.log.info("rendering post {s}", .{post_path});
