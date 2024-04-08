@@ -41,7 +41,6 @@ pub fn render(
 
     // parse metadata from the frontmatter
     var metadata = try parseMetadata(alloc, frontmatter);
-    defer metadata.deinit();
 
     // get the name of the layout from the metadata
     const layout_name = metadata.get("layout") orelse blk: {
@@ -55,8 +54,9 @@ pub fn render(
 }
 
 // simple key: value pair parser
-fn parseMetadata(alloc: std.mem.Allocator, frontmatter: []const u8) !std.StringHashMap([]const u8) {
-    var metadata = std.StringHashMap([]const u8).init(alloc);
+fn parseMetadata(alloc: std.mem.Allocator, frontmatter: []const u8) !*std.StringHashMap([]const u8) {
+    var metadata = try alloc.create(std.StringHashMap([]const u8));
+    metadata.* = @TypeOf(metadata.*).init(alloc);
 
     // loop through all lines
     var line_iter = std.mem.splitScalar(u8, frontmatter, '\n');

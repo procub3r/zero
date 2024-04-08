@@ -21,7 +21,7 @@ pub fn renderLayout(
     alloc: std.mem.Allocator,
     out: anytype,
     layout_name: []const u8,
-    metadata: std.StringHashMap([]const u8),
+    metadata: *std.StringHashMap([]const u8),
     source_md: []const u8,
 ) !void {
     // load the layout from the layout file
