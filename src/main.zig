@@ -2,7 +2,7 @@ const std = @import("std");
 const fs = @import("fs.zig");
 const md = @import("md.zig");
 const post = @import("post.zig");
-const config = @import("config.zig");
+const common = @import("common.zig");
 
 pub fn main() !void {
     // create an arena allocator. all memory will be freed at the end of the program
@@ -11,8 +11,8 @@ pub fn main() !void {
     const alloc = arena.allocator();
 
     // open the source directory
-    var source_dir = std.fs.cwd().openDir(config.CONTENT_DIR, .{ .iterate = true }) catch {
-        std.log.err("source directory {s} not found.", .{config.CONTENT_DIR});
+    var source_dir = std.fs.cwd().openDir(common.SOURCE_DIR, .{ .iterate = true }) catch {
+        std.log.err("source directory {s} not found.", .{common.SOURCE_DIR});
         return;
     };
     defer source_dir.close();
