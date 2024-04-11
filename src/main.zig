@@ -10,6 +10,10 @@ pub fn main() !void {
     defer arena.deinit();
     const alloc = arena.allocator();
 
+    // initialize the layout map
+    common.layout_map = @TypeOf(common.layout_map).init(alloc);
+    defer common.layout_map.deinit();
+
     // open the source directory
     var source_dir = std.fs.cwd().openDir(common.SOURCE_DIR, .{ .iterate = true }) catch {
         std.log.err("source directory {s} not found.", .{common.SOURCE_DIR});
@@ -24,6 +28,6 @@ pub fn main() !void {
     while (try source_walker.next()) |file| {
         // only work with markdown files
         if (file.kind != .file or !std.mem.endsWith(u8, file.path, ".md")) continue;
-        try post.render(alloc, source_dir, file);
+        post.render(alloc, source_dir, file) catch std.log.err("post not rendered\n", .{});
     }
 }

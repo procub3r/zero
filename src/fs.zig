@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub fn createFileMakePath(file_path: []const u8) !std.fs.File {
+pub inline fn createFileMakePath(file_path: []const u8) !std.fs.File {
     // print error message on error
     errdefer std.log.err("couldn't create file {s}", .{file_path});
 
@@ -26,8 +26,8 @@ pub fn readFile(alloc: std.mem.Allocator, dir: std.fs.Dir, path: []const u8) ![]
     };
     defer file.close();
 
-    // cap the file size at 8MiB
-    const content = file.readToEndAlloc(alloc, 8 * 1024 * 1024) catch |err| {
+    // cap the file size at 1MiB
+    const content = file.readToEndAlloc(alloc, 1024 * 1024) catch |err| {
         std.log.err("[{}] {s}", .{ err, path });
         return err;
     };
