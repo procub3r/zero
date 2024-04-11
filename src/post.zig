@@ -17,7 +17,9 @@ pub fn render(
     defer post_file.close();
 
     // create a buffered writer to write to the post file
-    var post_writer = std.io.bufferedWriter(post_file.writer());
+    var post_writer = std.io.BufferedWriter(2 * 4096, @TypeOf(post_file.writer())){
+        .unbuffered_writer = post_file.writer(),
+    };
     defer post_writer.flush() catch std.log.err("couldn't flush buffer to post file", .{});
 
     // read the source from the source file
@@ -66,7 +68,7 @@ inline fn parseMetadata(
     return source[end_index + end.len ..]; // return raw source without frontmatter
 }
 
-inline fn loadLayout(alloc: std.mem.Allocator, layout_name: []const u8) ![]const u8 {
+fn loadLayout(alloc: std.mem.Allocator, layout_name: []const u8) ![]const u8 {
     // try to get the layout from the layout map
     const layout = common.layout_map.get(layout_name) orelse read_layout: {
         // if it doesn't exist in the layout map, read it from the layout file
@@ -79,7 +81,7 @@ inline fn loadLayout(alloc: std.mem.Allocator, layout_name: []const u8) ![]const
     return layout;
 }
 
-inline fn renderLayout(
+fn renderLayout(
     post_writer: anytype,
     layout_: []const u8,
     metadata: *common.PostMetadata,
