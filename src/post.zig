@@ -29,6 +29,10 @@ pub fn render(
     const metadata = try alloc.create(common.PostMetadata);
     source = try parseMetadata(alloc, metadata, source);
 
+    // add default values
+    try metadata.put("path", post_path);
+    if (!metadata.contains("title")) try metadata.put("title", "Untitled Post");
+
     // get the path to the layout file and read its contents
     const layout_name = metadata.get("layout") orelse "post";
     const layout = try loadLayout(alloc, layout_name); // try fs.readFile(alloc, std.fs.cwd(), layout_path);
@@ -63,8 +67,6 @@ fn parseMetadata(
         try metadata.put(key, value);
     }
 
-    // add default values
-    if (!metadata.contains("title")) try metadata.put("title", "Untitled Post");
     return source[end_index + end.len ..]; // return raw source without frontmatter
 }
 

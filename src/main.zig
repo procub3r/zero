@@ -35,13 +35,37 @@ pub fn main() !void {
         post.render(alloc, source_dir, file) catch std.log.err("post not rendered\n", .{});
     }
 
-    // print the tag map for debugging
+    // render all tag pages
     var tag_map_iter = common.tag_map.iterator();
     while (tag_map_iter.next()) |entry| {
-        std.log.info("{s}: ", .{entry.key_ptr.*});
-        for (entry.value_ptr.items) |p| {
+        const tag = entry.key_ptr.*;
+        const tag_path = try std.mem.concat(alloc, u8, &.{ common.TAG_PAGES_DIR, tag, ".html" });
+        std.log.info("rendering tag file {s}", .{tag_path});
+
+        // create the tag file if it doesn't exist, and open it for writing
+        const tag_file = try fs.createFileMakePath(tag_path);
+        defer tag_file.close();
+
+        // create a buffered writer to write to the post file.
+        // the buffer size is SO over the top but who cares :D
+        var tag_writer = std.io.BufferedWriter(16 * 4096, @TypeOf(tag_file.writer())){
+            .unbuffered_writer = tag_file.writer(),
+        };
+        defer tag_writer.flush() catch std.log.err("couldn't flush buffer to tag file", .{});
+
+        // write post metadata to the tag file
+        const posts = entry.value_ptr.items;
+        for (posts) |p| {
+            try std.fmt.format(tag_writer.writer(),
+                \\<h2><a href="/{s}">{s}</a></h2>
+                \\<p>{s}</p>
+                \\
+            , .{
+                p.get("path") orelse "",
+                p.get("title") orelse "",
+                p.get("desc") orelse "",
+            });
             std.log.info("\t{?s}, ", .{p.get("title")});
         }
-        std.log.info("\n", .{});
     }
 }
