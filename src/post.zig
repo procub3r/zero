@@ -1,84 +1,153 @@
 const std = @import("std");
+const fs = @import("fs.zig");
 const md = @import("md.zig");
 const common = @import("common.zig");
-const layouts = @import("layouts.zig");
-
-pub fn renderFromSourceFile(
-    alloc: std.mem.Allocator,
-    post_path: []const u8,
-    source_dir: std.fs.Dir,
-    source_path: []const u8,
-) !void {
-    // open the post file for writing
-    const post_file = std.fs.cwd().createFile(post_path, .{}) catch |err| {
-        std.log.err("couldn't open file {s} for writing", .{post_path});
-        return err;
-    };
-    defer post_file.close();
-
-    // create a buffered writer to write the post
-    var post_writer_buffered = std.io.bufferedWriter(post_file.writer());
-
-    // open the source file and read its contents
-    const source = try common.readFile(alloc, source_dir, source_path);
-    // don't free source as parts of it will be used to render
-    // a post description in the tags page.
-
-    // render the post
-    try render(alloc, &post_writer_buffered, source);
-    try post_writer_buffered.flush();
-}
 
 pub fn render(
     alloc: std.mem.Allocator,
-    post_writer: anytype,
-    source: []const u8,
+    source_dir: std.fs.Dir,
+    source_path: std.fs.Dir.Walker.WalkerEntry,
 ) !void {
-    // determine the bounds of the frontmatter and source markdown
-    const frontmatter_end = try getFrontmatterEnd(source);
-    const frontmatter = source[4..frontmatter_end];
-    const source_md = source[frontmatter_end + 6 ..];
+    // determine path to the post rendered from the source file
+    const post_path = try std.mem.concat(alloc, u8, &.{ source_path.path[0 .. source_path.path.len - 2], "html" });
+    std.log.info("rendering post {s}", .{post_path});
 
-    // parse metadata from the frontmatter
-    var metadata = try parseMetadata(alloc, frontmatter);
+    // create the post file if it doesn't exist, and open it for writing
+    const post_file = try fs.createFileMakePath(post_path);
+    defer post_file.close();
 
-    // get the name of the layout from the metadata
-    const layout_name = metadata.get("layout") orelse blk: {
-        std.log.warn("layout field not set. defaulting to {s}", .{layouts.DEFAULT_LAYOUT});
-        break :blk layouts.DEFAULT_LAYOUT;
+    // create a buffered writer to write to the post file
+    var post_writer = std.io.BufferedWriter(16 * 4096, @TypeOf(post_file.writer())){
+        .unbuffered_writer = post_file.writer(),
     };
-    std.log.info("using layout {s}", .{layout_name});
+    defer post_writer.flush() catch std.log.err("couldn't flush buffer to post file", .{});
 
-    // replace all variables in the layout and write it to the post file
-    try layouts.renderLayout(alloc, post_writer, layout_name, metadata, source_md);
+    // read the source from the source file
+    var source = try fs.readFile(alloc, source_dir, source_path.path);
+
+    // parse metadata and remove frontmatter from source
+    const metadata = try alloc.create(common.PostMetadata);
+    source = try parseMetadata(alloc, metadata, source);
+
+    // add default values
+    try metadata.put("path", post_path);
+    if (!metadata.contains("title")) try metadata.put("title", "Untitled Post");
+
+    // get the path to the layout file and read its contents
+    const layout_name = metadata.get("layout") orelse "post";
+    const layout = try loadLayout(alloc, layout_name); // try fs.readFile(alloc, std.fs.cwd(), layout_path);
+
+    // render the post using the layout
+    try renderLayout(alloc, post_writer.writer(), layout, metadata, source);
+
+    std.log.info(" rendered post {s}\n", .{post_path});
 }
 
-// simple key: value pair parser
-fn parseMetadata(alloc: std.mem.Allocator, frontmatter: []const u8) !*std.StringHashMap([]const u8) {
-    var metadata = try alloc.create(std.StringHashMap([]const u8));
-    metadata.* = @TypeOf(metadata.*).init(alloc);
+// populate metadata and return the source with the frontmatter stripped away
+fn parseMetadata(
+    alloc: std.mem.Allocator,
+    metadata: *common.PostMetadata,
+    source: []const u8,
+) ![]const u8 {
+    errdefer std.log.err("incorrect frontmatter formatting", .{});
+    metadata.* = common.PostMetadata.init(alloc);
 
-    // loop through all lines
-    var line_iter = std.mem.splitScalar(u8, frontmatter, '\n');
+    // parse frontmatter
+    const begin = "---\n";
+    const end = "---\n\n";
+    if (!std.mem.startsWith(u8, source, begin)) return error.IncorrectFrontmatterFormat;
+    const end_index = std.mem.indexOf(u8, source, end) orelse return error.IncorrectFrontmatterFormat;
+
+    // loop through all key: val pairs and put them in metadata
+    var line_iter = std.mem.splitScalar(u8, source[begin.len..end_index], '\n');
     while (line_iter.next()) |line| {
         const colon = std.mem.indexOfScalar(u8, line, ':') orelse continue;
         const key = std.mem.trim(u8, line[0..colon], " \t");
         const value = std.mem.trim(u8, line[colon + 1 ..], " \t");
-
-        // put the key: value pair into the metadata hashmap
         try metadata.put(key, value);
     }
 
-    return metadata;
+    return source[end_index + end.len ..]; // return raw source without frontmatter
 }
 
-fn getFrontmatterEnd(source: []const u8) !usize {
-    const err = error.IncorrectFormat;
-    errdefer std.log.err("incorrect frontmatter format", .{});
+fn loadLayout(alloc: std.mem.Allocator, layout_name: []const u8) ![]const u8 {
+    // try to get the layout from the layout map
+    const layout = common.layout_map.get(layout_name) orelse read_layout: {
+        // if it doesn't exist in the layout map, read it from the layout file
+        const layout_path = try std.mem.concat(alloc, u8, &.{ common.LAYOUT_DIR, layout_name, ".html" });
+        const layout = try fs.readFile(alloc, std.fs.cwd(), layout_path);
+        // and put it into the layout map for future use
+        try common.layout_map.put(layout_name, layout);
+        break :read_layout layout;
+    };
+    return layout;
+}
 
-    // all source files must start with a ---\n and
-    // the frontmatter must end with a \n---\n\n
-    if (!std.mem.startsWith(u8, source, "---\n")) return err;
-    const end = std.mem.indexOf(u8, source, "\n---\n\n") orelse return err;
-    return end;
+fn renderLayout(
+    alloc: std.mem.Allocator,
+    post_writer: anytype,
+    layout_: []const u8,
+    metadata: *common.PostMetadata,
+    source: []const u8,
+) !void {
+    var layout = layout_; // we need a mutable slice
+    const var_format_start = "<!--{";
+    const var_format_end = "}-->";
+
+    // replace all the variables in the layout and write it to the post
+    while (std.mem.indexOf(u8, layout, var_format_start)) |var_start| {
+        // write everything up till the start of the variable as it is
+        _ = try post_writer.write(layout[0..var_start]);
+
+        // find the end index of the variable
+        const var_end = std.mem.indexOf(u8, layout, var_format_end) orelse {
+            std.log.warn("no matching {s} found for {s}", .{ var_format_end, var_format_start });
+            layout = layout[var_start..];
+            break;
+        };
+
+        // get the name and value of the variable
+        const var_name = layout[var_start + var_format_start.len .. var_end];
+        const var_value = metadata.get(var_name) orelse "";
+
+        // process inbuilt variables
+        if (std.mem.eql(u8, var_name, "body")) {
+            // render markdown body to html
+            try md.toHtml(post_writer, source);
+        } else if (std.mem.eql(u8, var_name, "tags")) {
+            // render all tags to the page
+            var tag_iter = std.mem.splitScalar(u8, var_value, ',');
+            while (tag_iter.next()) |tag_| {
+                const tag = std.mem.trim(u8, tag_, " \t");
+                if (tag.len == 0) continue; // skip empty tags
+
+                // write the tag to the post
+                try std.fmt.format(
+                    post_writer,
+                    "<a class=\"tag\" href=\"/{s}{s}.html\">{s}</a> ",
+                    .{ common.TAG_PAGES_DIR, tag, tag },
+                );
+
+                // put the post in the tag map
+                var post_array = common.tag_map.getPtr(tag) orelse init_post_array: {
+                    // if the post array doesn't exist, init it and put it into the map
+                    const post_array = std.ArrayList(*common.PostMetadata).init(alloc);
+                    try common.tag_map.put(tag, post_array);
+                    break :init_post_array common.tag_map.getPtr(tag).?;
+                };
+                try post_array.append(metadata);
+            }
+        }
+
+        // directly replace the user defined variables
+        else {
+            _ = try post_writer.write(var_value);
+        }
+
+        // slide the layout slice past the current variable
+        layout = layout[var_end + var_format_end.len ..];
+    }
+
+    // write what's left of the layout
+    _ = try post_writer.write(layout);
 }

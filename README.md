@@ -8,12 +8,12 @@ Zero is a static site generator written in Zig. It will be used to generate my p
     ├── layouts
     │  ├── post.html
     │  └── ...
-    └── src
+    └── source
        ├── index.md
        └── ...
     ```
 - All layouts (templates) must be in the `layouts/` folder. Write your layout file as regular html with variables being `<!--{variable name here}-->`.
-- All variables are replaced with their value specified in the frontmatter of the markdown source while rendering. The `content` variable is special and is replaced with the html content generated from the markdown source.
+- All variables are replaced with their value specified in the frontmatter of the markdown source while rendering. The `body` variable is special and is replaced with the html content generated from the markdown source.
 - All posts must be in the `src/` folder. Write your posts in markdown with a yaml frontmatter section. The format is as follows:
     ```markdown
     ---
@@ -38,6 +38,5 @@ Zero is a static site generator written in Zig. It will be used to generate my p
 - [x] Markdown rendering
 - [x] Frontmatter parsing
 - [x] Templating
-- [ ] Improve README
 - [ ] Tags
-- [ ] Incremental builds
+- [ ] Improve README
