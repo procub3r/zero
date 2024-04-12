@@ -14,6 +14,10 @@ pub fn main() !void {
     common.layout_map = @TypeOf(common.layout_map).init(alloc);
     defer common.layout_map.deinit();
 
+    // initialize the tag map
+    common.tag_map = @TypeOf(common.tag_map).init(alloc);
+    defer common.tag_map.deinit();
+
     // open the source directory
     var source_dir = std.fs.cwd().openDir(common.SOURCE_DIR, .{ .iterate = true }) catch {
         std.log.err("source directory {s} not found.", .{common.SOURCE_DIR});
@@ -29,5 +33,15 @@ pub fn main() !void {
         // only work with markdown files
         if (file.kind != .file or !std.mem.endsWith(u8, file.path, ".md")) continue;
         post.render(alloc, source_dir, file) catch std.log.err("post not rendered\n", .{});
+    }
+
+    // print the tag map for debugging
+    var tag_map_iter = common.tag_map.iterator();
+    while (tag_map_iter.next()) |entry| {
+        std.log.info("{s}: ", .{entry.key_ptr.*});
+        for (entry.value_ptr.items) |p| {
+            std.log.info("\t{?s}, ", .{p.get("title")});
+        }
+        std.log.info("\n", .{});
     }
 }

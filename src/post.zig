@@ -17,7 +17,7 @@ pub fn render(
     defer post_file.close();
 
     // create a buffered writer to write to the post file
-    var post_writer = std.io.BufferedWriter(2 * 4096, @TypeOf(post_file.writer())){
+    var post_writer = std.io.BufferedWriter(16 * 4096, @TypeOf(post_file.writer())){
         .unbuffered_writer = post_file.writer(),
     };
     defer post_writer.flush() catch std.log.err("couldn't flush buffer to post file", .{});
@@ -34,13 +34,13 @@ pub fn render(
     const layout = try loadLayout(alloc, layout_name); // try fs.readFile(alloc, std.fs.cwd(), layout_path);
 
     // render the post using the layout
-    try renderLayout(post_writer.writer(), layout, metadata, source);
+    try renderLayout(alloc, post_writer.writer(), layout, metadata, source);
 
     std.log.info(" rendered post {s}\n", .{post_path});
 }
 
 // populate metadata and return the source with the frontmatter stripped away
-inline fn parseMetadata(
+fn parseMetadata(
     alloc: std.mem.Allocator,
     metadata: *common.PostMetadata,
     source: []const u8,
@@ -82,6 +82,7 @@ fn loadLayout(alloc: std.mem.Allocator, layout_name: []const u8) ![]const u8 {
 }
 
 fn renderLayout(
+    alloc: std.mem.Allocator,
     post_writer: anytype,
     layout_: []const u8,
     metadata: *common.PostMetadata,
@@ -109,7 +110,31 @@ fn renderLayout(
 
         // process inbuilt variables
         if (std.mem.eql(u8, var_name, "body")) {
+            // render markdown body to html
             try md.toHtml(post_writer, source);
+        } else if (std.mem.eql(u8, var_name, "tags")) {
+            // render all tags to the page
+            var tag_iter = std.mem.splitScalar(u8, var_value, ',');
+            while (tag_iter.next()) |tag_| {
+                const tag = std.mem.trim(u8, tag_, " \t");
+                if (tag.len == 0) continue; // skip empty tags
+
+                // write the tag to the post
+                try std.fmt.format(
+                    post_writer,
+                    "<a class=\"tag\" href=\"/{s}{s}.html\">{s}</a> ",
+                    .{ common.TAG_PAGES_DIR, tag, tag },
+                );
+
+                // put the post in the tag map
+                var post_array = common.tag_map.getPtr(tag) orelse init_post_array: {
+                    // if the post array doesn't exist, init it and put it into the map
+                    const post_array = std.ArrayList(*common.PostMetadata).init(alloc);
+                    try common.tag_map.put(tag, post_array);
+                    break :init_post_array common.tag_map.getPtr(tag).?;
+                };
+                try post_array.append(metadata);
+            }
         }
 
         // directly replace the user defined variables
