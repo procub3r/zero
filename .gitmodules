@@ -1,0 +1,3 @@
+[submodule "deps/md4c"]
+	path = deps/md4c
+	url = git@github.com:mity/md4c.git
