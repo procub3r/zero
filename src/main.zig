@@ -17,7 +17,7 @@ pub fn main() !void {
 
     // all posts are stored in this post array
     var posts = try std.ArrayList(post.Post).initCapacity(alloc, 32);
-    defer deletePosts(posts);
+    defer deletePosts(alloc, posts);
 
     // open source directory
     var source_dir = try std.fs.cwd().openDir(SOURCE_DIR, .{ .iterate = true });
@@ -29,11 +29,13 @@ pub fn main() !void {
     while (try source_walker.next()) |f| {
         // render only markdown files
         if (f.kind != .file or !std.mem.endsWith(u8, f.basename, ".md")) continue;
-        std.log.info("rendering {s}", .{f.path});
+        std.log.info("rendering " ++ SOURCE_DIR ++ "{s}", .{f.path});
 
-        // open the source file
+        // open and read from the source file
         const source_file = try f.dir.openFile(f.basename, .{});
         defer source_file.close();
+        const source = try source_file.readToEndAlloc(alloc, 1 << 30);
+        defer alloc.free(source);
 
         // construct out file path and open it
         const out_path = try std.mem.concat(alloc, u8, &.{
@@ -43,10 +45,18 @@ pub fn main() !void {
         const out_file = try createMakePath(out_path);
         defer out_file.close();
 
-        // create a post
-        var p = try post.Post.init(alloc, out_file, source_file);
-        try posts.append(p); // append post to posts array
-        try p.render(alloc); // render the post
+        // create and render the post
+        var p = post.Post.init(alloc);
+        post.render(alloc, out_file, &p, source) catch |err| {
+            std.debug.print("error: {}\n", .{err});
+        };
+        try posts.append(p); // append post to the posts array
+
+        // print post metadata for debugging
+        var p_iter = p.iterator();
+        while (p_iter.next()) |entry| {
+            std.log.info("\t{s}: {s}", .{ entry.key_ptr.*, entry.value_ptr.* });
+        }
     }
 }
 
@@ -67,10 +77,13 @@ fn createMakePath(file_path: []const u8) !std.fs.File {
 }
 
 // delete all the posts in the post array
-fn deletePosts(posts: std.ArrayList(post.Post)) void {
+fn deletePosts(alloc: std.mem.Allocator, posts: std.ArrayList(post.Post)) void {
     for (posts.items) |*p| {
-        p.data.deinit(); // deinit the data hashmap
-        p.source.deinit(); // deinit the source arraylist
+        var p_iter = p.valueIterator();
+        while (p_iter.next()) |value| {
+            alloc.free(value.*); // free hashmap values
+        }
+        p.deinit(); // deinit the post hashmap
     }
     posts.deinit(); // deinit the posts array itself
 }

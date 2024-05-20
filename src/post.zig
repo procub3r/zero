@@ -1,38 +1,42 @@
 const std = @import("std");
 const md = @import("md.zig");
 
-pub const Post = struct {
-    source: std.ArrayList(u8), // source string
-    data: std.StringHashMap([]const u8), // metadata
-    out: std.fs.File, // out file to render the post to
+// Post type. posts are just key: val pairs
+pub const Post = std.StringHashMap([]const u8);
 
-    const Self = @This();
+// render a post to out file
+pub fn render(alloc: std.mem.Allocator, out: std.fs.File, post: *Post, source: []const u8) !void {
+    // the post will be rendered to out_buf first
+    var out_buf = try std.ArrayList(u8).initCapacity(alloc, source.len);
+    defer out_buf.deinit();
 
-    // create a post and return it
-    pub fn init(
-        alloc: std.mem.Allocator,
-        out_file: std.fs.File,
-        source_file: std.fs.File,
-    ) !Self {
-        var p = Self{
-            .source = std.ArrayList(u8).init(alloc),
-            .data = std.StringHashMap([]const u8).init(alloc),
-            .out = out_file,
-        };
+    // parse frontmatter using a line iterator
+    var line_iter = std.mem.splitScalar(u8, source, '\n');
 
-        // read the source. cap it to 1G
-        try source_file.reader().readAllArrayList(&p.source, 1 << 30);
-        return p;
+    // the first line must be "---\n"
+    const first_line = line_iter.next() orelse return error.IncorrectFormat;
+    if (!std.mem.eql(u8, first_line, "---")) return error.IncorrectFormat;
+
+    var frontmatter_len: usize = 4;
+    while (line_iter.next()) |line| {
+        if (std.mem.eql(u8, line, "---")) break; // frontmatter end
+        frontmatter_len += line.len + 1;
+
+        // parse the key and the value
+        const colon = std.mem.indexOfScalar(u8, line, ':') orelse continue;
+        const key = std.mem.trim(u8, line[0..colon], " \t");
+        const value_ = std.mem.trim(u8, line[colon + 1 ..], " \t");
+        // allocate value because source will be freed (and with it, value_)
+        const value = try alloc.dupe(u8, value_);
+
+        // put the key value pair into the post map
+        try post.put(key, value);
     }
 
-    // render a post to its out file
-    pub fn render(self: *Self, alloc: std.mem.Allocator) !void {
-        // render the post to out_buf first
-        var out_buf = try std.ArrayList(u8).initCapacity(alloc, self.source.items.len);
-        defer out_buf.deinit();
-        try md.toHtml(out_buf.writer(), self.source.items);
+    // render markdown to html and write to out_buf
+    const source_md = source[frontmatter_len + 4 ..];
+    try md.toHtml(out_buf.writer(), source_md);
 
-        // write out_buf to out file
-        try self.out.writeAll(out_buf.items);
-    }
-};
+    // write out_buf to out file
+    try out.writeAll(out_buf.items);
+}
