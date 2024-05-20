@@ -19,6 +19,9 @@ pub fn main() !void {
     var posts = try std.ArrayList(post.Post).initCapacity(alloc, 32);
     defer deletePosts(alloc, posts);
 
+    var layout_map = std.StringHashMap([]const u8).init(alloc);
+    defer deleteLayoutMap(alloc, &layout_map);
+
     // open source directory
     var source_dir = try std.fs.cwd().openDir(SOURCE_DIR, .{ .iterate = true });
     defer source_dir.close();
@@ -47,16 +50,10 @@ pub fn main() !void {
 
         // create and render the post
         var p = post.Post.init(alloc);
-        post.render(alloc, out_file, &p, source) catch |err| {
+        post.render(alloc, out_file, &layout_map, &p, source) catch |err| {
             std.debug.print("error: {}\n", .{err});
         };
         try posts.append(p); // append post to the posts array
-
-        // print post metadata for debugging
-        var p_iter = p.iterator();
-        while (p_iter.next()) |entry| {
-            std.log.info("\t{s}: {s}", .{ entry.key_ptr.*, entry.value_ptr.* });
-        }
     }
 }
 
@@ -86,4 +83,13 @@ fn deletePosts(alloc: std.mem.Allocator, posts: std.ArrayList(post.Post)) void {
         p.deinit(); // deinit the post hashmap
     }
     posts.deinit(); // deinit the posts array itself
+}
+
+// delete all the layouts in the layout map
+fn deleteLayoutMap(alloc: std.mem.Allocator, layout_map: *std.StringHashMap([]const u8)) void {
+    var layout_iter = layout_map.valueIterator();
+    while (layout_iter.next()) |layout| {
+        alloc.free(layout.*); // free layout slice
+    }
+    layout_map.deinit(); // deinit the layout map
 }
